@@ -75,31 +75,38 @@ std::vector<std::unordered_set<int>> generate_network(int N, int m, double p, do
     }
     graph[0].insert(9);
 
-    for (int i = 0; i < N; i++) {
-        int current = get_random_integer(0, i + 9);
-        std::unordered_set<int> marked;
+    int n_nodes = 10;
 
-        for (int j = 0; j < m; j++) {
+    for (int i = 0; i < N; i++) {
+        int start = get_random_integer(0, n_nodes - 1);
+        int current = start;
+
+        std::vector<int> marked;
+        marked.push_back(start);
+
+        for (int j = 0; j < m-1; j++) {
             int number_of_steps = get_number_of_steps(p);
             current = random_walk(graph, current, number_of_steps);
-            marked.insert(current);
+            marked.push_back(current);
         }
 
         graph.push_back(std::unordered_set<int>());
         
         for (int val : marked) {
-            graph[i+10].insert(val);
-            graph[val].insert(i+10);
+            graph[n_nodes].insert(val);
+            graph[val].insert(n_nodes);
         }
         
-        for (int val1 : marked) {
-            for (int val2 : marked) {
-                if (val1 != val2 && eventOccurs(fp)) {
-                    graph[val1].insert(val2);
-                    graph[val2].insert(val1);
+        for (size_t i = 0; i < marked.size(); i++) {
+            for (size_t j = i + 1; j < marked.size(); j++) {
+                if (marked[i] != marked[j] && eventOccurs(fp)) {
+                    graph[marked[i]].insert(marked[j]);
+                    graph[marked[j]].insert(marked[i]);
                 }
             }
         }
+
+        n_nodes++;
     }
 
     std::cout << "Network generated successfully\n";
@@ -132,19 +139,40 @@ int main() {
     
     auto start_time = std::chrono::high_resolution_clock::now();
     
-    auto graph = generate_network(n, 2, 0.2, 0.5);
+    auto graph = generate_network(n, 2, 1.0, 0.5);
     
     auto end_time = std::chrono::high_resolution_clock::now();
     auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end_time - start_time);
     std::cout << "Network generation time: " << duration.count() << " milliseconds" << std::endl;
     
     writeNetworkToFile(graph, "network.txt");
+ 
+    auto fastGraph = convertToFastGraph(graph);
+
+    start_time = std::chrono::high_resolution_clock::now();
+    auto power_law_result = calculatePowerLaw(fastGraph);
+    double power_law_coef = std::get<0>(power_law_result);
+    double pearson_r = std::get<1>(power_law_result);
+    int max_degree = std::get<2>(power_law_result);
+    end_time = std::chrono::high_resolution_clock::now();
+    auto power_law_duration = std::chrono::duration_cast<std::chrono::milliseconds>(end_time - start_time);
     
     start_time = std::chrono::high_resolution_clock::now();
-    double avg_path_length = calculateAverageShortestPathLength(graph);
+    double avg_path_length = calculateShortestPathLength(fastGraph);
     end_time = std::chrono::high_resolution_clock::now();
-    duration = std::chrono::duration_cast<std::chrono::milliseconds>(end_time - start_time);
+    auto avg_path_length_duration = std::chrono::duration_cast<std::chrono::milliseconds>(end_time - start_time);
+
+    start_time = std::chrono::high_resolution_clock::now();
+    double clustering_coefficient = calculateClusteringCoefficient(fastGraph);
+    end_time = std::chrono::high_resolution_clock::now();
+    auto clustering_coefficient_duration = std::chrono::duration_cast<std::chrono::milliseconds>(end_time - start_time);
     
     std::cout << "Average shortest path length: " << avg_path_length << std::endl;
-    std::cout << "Metrics calculation time: " << duration.count() << " milliseconds" << std::endl;
+    std::cout << "Clustering coefficient: " << clustering_coefficient << std::endl;
+    std::cout << "Power law coefficient (gamma): " << power_law_coef << std::endl;
+    std::cout << "Pearson's R for power law fit: " << pearson_r << std::endl;
+    std::cout << "Maximum degree in network: " << max_degree << std::endl;
+    std::cout << "Clustering coefficient calculation time: " << clustering_coefficient_duration.count() << " milliseconds" << std::endl;
+    std::cout << "Average path length calculation time: " << avg_path_length_duration.count() << " milliseconds" << std::endl;
+    std::cout << "Power law calculation time: " << power_law_duration.count() << " milliseconds" << std::endl;
 }

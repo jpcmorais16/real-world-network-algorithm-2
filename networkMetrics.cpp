@@ -7,13 +7,112 @@
 #include <iostream>
 #include <string>
 #include <fstream>
+#include <cmath>
+#include <tuple>
 
 #include "networkMetrics.h"
 
 using namespace std;
 
+std::tuple<double, double, int> calculatePowerLaw(const vector<vector<int>>& fastGraph) {
+    const size_t n = fastGraph.size();
+    
+    size_t maxDegree = 0;
+    
+    for (const auto& neighbors : fastGraph) {
+        size_t degree = neighbors.size();
+        maxDegree = std::max(maxDegree, degree);
+    }
+    
+    vector<int> degreeFrequency(maxDegree + 1, 0);
+    
+    for (const auto& neighbors : fastGraph) {
+        size_t degree = neighbors.size();
+        degreeFrequency[degree]++;
+    }
+    
+    vector<double> logDegree;
+    vector<double> logProbability;
+    
+    for (size_t k = 1; k < degreeFrequency.size(); k++) {
+        if (degreeFrequency[k] > 0) {
+            double probability = static_cast<double>(degreeFrequency[k]) / n;
+            logDegree.push_back(log(static_cast<double>(k)));
+            logProbability.push_back(log(probability));
+        }
+    }
+    
+    if (logDegree.size() < 2) {
+        return {0.0, 0.0, static_cast<int>(maxDegree)};
+    }
+    
+    double sumX = 0.0, sumY = 0.0, sumXY = 0.0, sumX2 = 0.0, sumY2 = 0.0;
+    int m = logDegree.size();
+    
+    for (int i = 0; i < m; i++) {
+        sumX += logDegree[i];
+        sumY += logProbability[i];
+        sumXY += logDegree[i] * logProbability[i];
+        sumX2 += logDegree[i] * logDegree[i];
+        sumY2 += logProbability[i] * logProbability[i];
+    }
+    
+    double slope = (m * sumXY - sumX * sumY) / (m * sumX2 - sumX * sumX);
+    
+    double r = (m * sumXY - sumX * sumY) / 
+               sqrt((m * sumX2 - sumX * sumX) * (m * sumY2 - sumY * sumY));
+    
+    return {-slope, r, static_cast<int>(maxDegree)};
+}
 
-double calculateCPUShortestPath(const vector<vector<int>>& fastGraph) {
+std::vector<std::vector<int>> convertToFastGraph(std::vector<std::unordered_set<int>>& graph) {
+    const size_t n = graph.size();
+    std::vector<std::vector<int>> fastGraph(n);
+    
+    for (size_t i = 0; i < n; ++i) {
+        const size_t degree = graph[i].size();
+        fastGraph[i].reserve(degree);
+        fastGraph[i].assign(graph[i].begin(), graph[i].end());
+    }
+    
+    return fastGraph;
+}
+
+double calculateClusteringCoefficient(const vector<vector<int>>& fastGraph) {
+    const size_t n = fastGraph.size();
+    double totalSum = 0.0;
+
+    for (size_t i = 0; i < n; ++i) {
+        const size_t degree = fastGraph[i].size();
+        if (degree < 2) continue;
+
+        unordered_set<int> neighborSet(fastGraph[i].begin(), fastGraph[i].end());
+        
+        int connections = 0;
+        for (size_t j = 0; j < fastGraph[i].size(); ++j) {
+            int neighbor1 = fastGraph[i][j];
+            for (size_t k = j + 1; k < fastGraph[i].size(); ++k) {
+                int neighbor2 = fastGraph[i][k];
+                
+                for (int adj : fastGraph[neighbor1]) {
+                    if (adj == neighbor2) {
+                        connections++;
+                        break;
+                    }
+                }
+            }
+        }
+        
+        int maxPossibleConnections = degree * (degree - 1) / 2;
+        
+        double localCoefficient = connections / static_cast<double>(maxPossibleConnections);
+        totalSum += localCoefficient;
+    }
+
+    return totalSum / n;
+}
+
+double calculateShortestPathLength(const vector<vector<int>>& fastGraph) {
     const size_t n = fastGraph.size();
     double totalSum = 0.0;
 
@@ -88,17 +187,4 @@ double calculateCPUShortestPath(const vector<vector<int>>& fastGraph) {
     totalSum = std::accumulate(threadResults.begin(), threadResults.end(), 0.0);
     
     return totalSum / n;
-}
-
-double calculateAverageShortestPathLength(std::vector<std::unordered_set<int>>& graph) {
-    const size_t n = graph.size();
-    
-    std::vector<std::vector<int>> fastGraph(n);
-    for (size_t i = 0; i < n; ++i) {
-        const size_t degree = graph[i].size();
-        fastGraph[i].reserve(degree);
-        fastGraph[i].assign(graph[i].begin(), graph[i].end());
-    }
-    
-    return calculateCPUShortestPath(fastGraph);
 }
