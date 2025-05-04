@@ -1,0 +1,4 @@
+*.o
+.vscode/settings.json
+network_metrics
+main
