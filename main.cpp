@@ -7,6 +7,8 @@
 #include <cmath>
 #include <unordered_map>
 #include <fstream>
+#include <string>
+#include <iomanip>
 #include "networkMetrics.h"
 
 using namespace std;
@@ -114,65 +116,209 @@ std::vector<std::unordered_set<int>> generate_network(int N, int m, double p, do
     return graph;
 }
 
-void writeNetworkToFile(const std::vector<std::unordered_set<int>>& graph, const std::string& filename) {
-    std::ofstream file(filename);
-    if (!file.is_open()) {
-        std::cerr << "Failed to open file: " << filename << std::endl;
-        return;
+struct SimulationResult {
+    double avgClust;
+    double transitivity;
+    double avgPathLength;
+    double pearsonR;
+    double powerLawCoefficient;
+    double maxDegree;
+    double constructionTime;
+    double pathCalcTime;
+    double totalTime;
+    size_t numThreads;
+};
+
+SimulationResult run_simulation(int N, double p, int m, double friendship_probability) {
+    SimulationResult result;
+    
+    auto start_time = std::chrono::high_resolution_clock::now();
+    
+    auto graph = generate_network(N, m, p, friendship_probability);
+    
+    auto end_time = std::chrono::high_resolution_clock::now();
+    result.constructionTime = std::chrono::duration_cast<std::chrono::milliseconds>(end_time - start_time).count() / 1000.0;
+    
+    auto metrics = calculateAllMetrics(graph);
+    
+    result.avgClust = metrics.clusteringCoefficient;
+    result.transitivity = metrics.clusteringCoefficient;
+    result.avgPathLength = metrics.avgPathLength;
+    result.pearsonR = metrics.pearsonR;
+    result.powerLawCoefficient = metrics.powerLawCoefficient;
+    result.maxDegree = metrics.maxDegree;
+    result.pathCalcTime = metrics.avgPathLengthDuration.count() / 1000.0;
+    result.totalTime = result.constructionTime + result.pathCalcTime;
+    result.numThreads = metrics.numThreads;
+    
+    std::cout << "Simulation completed - Clustering: " << result.avgClust 
+              << ", Path length: " << result.avgPathLength 
+              << ", Construction time: " << result.constructionTime << "s"
+              << ", Path calc time: " << result.pathCalcTime << "s"
+              << ", Total time: " << result.totalTime << "s"
+              << ", Threads: " << metrics.numThreads << "\n";
+              
+    return result;
+}
+
+double calculate_std_dev(const std::vector<double>& values, double mean) {
+    double variance = 0.0;
+    for (double value : values) {
+        double diff = value - mean;
+        variance += diff * diff;
+    }
+    return std::sqrt(variance / values.size());
+}
+
+void create_point_sequential(const std::string& filepath, int N, double p, int m, double friendship_probability, int n_simulations) {
+    std::cout << "Running " << n_simulations << " sequential simulations...\n";
+    
+    std::vector<SimulationResult> results;
+    
+    std::ofstream partial_file("partial.txt", std::ios_base::app);
+    if (!partial_file.is_open()) {
+        std::cerr << "Warning: Could not open partial.txt for writing individual results" << std::endl;
+    } else {
+        partial_file.seekp(0, std::ios::end);
+        if (partial_file.tellp() == 0) {
+            partial_file << "Simulation\tN\tp\tm\tfriendship_probability\tavg_clustering\ttransitivity\tavg_path\tr\tslope\tmax_degree\tconstruction_time\tpath_calc_time\ttotal_time\tthreads\n";
+        }
+        partial_file << std::fixed << std::setprecision(4);
     }
     
-    for (size_t i = 0; i < graph.size(); i++) {
-        for (const int neighbor : graph[i]) {
-            if (i < static_cast<size_t>(neighbor)) {
-                file << i << " " << neighbor << "\n";
+    for (int i = 0; i < n_simulations; i++) {
+        std::cout << "Simulation " << (i+1) << "/" << n_simulations << "...\n";
+        SimulationResult result = run_simulation(N, p, m, friendship_probability);
+        results.push_back(result);
+        
+        if (partial_file.is_open()) {
+            partial_file << (i+1) << "\t" 
+                         << N << "\t" 
+                         << p << "\t" 
+                         << m << "\t" 
+                         << friendship_probability << "\t"
+                         << result.avgClust << "\t"
+                         << result.transitivity << "\t"
+                         << result.avgPathLength << "\t"
+                         << result.pearsonR << "\t"
+                         << result.powerLawCoefficient << "\t"
+                         << result.maxDegree << "\t"
+                         << result.constructionTime << "\t"
+                         << result.pathCalcTime << "\t"
+                         << result.totalTime << "\t"
+                         << result.numThreads << "\n";
+        }
+    }
+    
+    if (partial_file.is_open()) {
+        partial_file.close();
+        std::cout << "Individual simulation results written to partial.txt" << std::endl;
+    }
+    
+    // Calculate averages
+    double avg_clust = 0.0, avg_trans = 0.0, avg_path = 0.0, avg_r = 0.0;
+    double avg_slope = 0.0, avg_max_degree = 0.0, avg_construction_time = 0.0;
+    double avg_shortest_path_calculation_time = 0.0;
+    double avg_total_time = 0.0;
+    
+    std::vector<double> clust_values, trans_values, path_values, r_values;
+    std::vector<double> slope_values, max_degree_values, construction_time_values, path_calc_time_values;
+    std::vector<double> total_time_values;
+    
+    for (const auto& r : results) {
+        avg_clust += r.avgClust;
+        avg_trans += r.transitivity;
+        avg_path += r.avgPathLength;
+        avg_r += r.pearsonR;
+        avg_slope += r.powerLawCoefficient;
+        avg_max_degree += r.maxDegree;
+        avg_construction_time += r.constructionTime;
+        avg_shortest_path_calculation_time += r.pathCalcTime;
+        avg_total_time += r.totalTime;
+        
+        clust_values.push_back(r.avgClust);
+        trans_values.push_back(r.transitivity);
+        path_values.push_back(r.avgPathLength);
+        r_values.push_back(r.pearsonR);
+        slope_values.push_back(r.powerLawCoefficient);
+        max_degree_values.push_back(r.maxDegree);
+        construction_time_values.push_back(r.constructionTime);
+        path_calc_time_values.push_back(r.pathCalcTime);
+        total_time_values.push_back(r.totalTime);
+    }
+    
+    avg_clust /= n_simulations;
+    avg_trans /= n_simulations;
+    avg_path /= n_simulations;
+    avg_r /= n_simulations;
+    avg_slope /= n_simulations;
+    avg_max_degree /= n_simulations;
+    avg_construction_time /= n_simulations;
+    avg_shortest_path_calculation_time /= n_simulations;
+    avg_total_time /= n_simulations;
+    
+    double std_clust = calculate_std_dev(clust_values, avg_clust);
+    double std_trans = calculate_std_dev(trans_values, avg_trans);
+    double std_path = calculate_std_dev(path_values, avg_path);
+    double std_r = calculate_std_dev(r_values, avg_r);
+    double std_slope = calculate_std_dev(slope_values, avg_slope);
+    double std_max_degree = calculate_std_dev(max_degree_values, avg_max_degree);
+    double std_construction_time = calculate_std_dev(construction_time_values, avg_construction_time);
+    double std_shortest_path_calculation_time = calculate_std_dev(path_calc_time_values, avg_shortest_path_calculation_time);
+    double std_total_time = calculate_std_dev(total_time_values, avg_total_time);
+    
+    std::ofstream file(filepath, std::ios_base::app);
+    if (file.is_open()) {
+        file << std::fixed << std::setprecision(4);
+        file << N << "\t" << p << "\t" << m << "\t" << friendship_probability << "\t"
+             << avg_clust << " // " << std_clust << "\t"
+             << avg_trans << " // " << std_trans << "\t"
+             << avg_path << " // " << std_path << "\t"
+             << avg_r << " // " << std_r << "\t"
+             << avg_slope << " // " << std_slope << "\t"
+             << avg_max_degree << " // " << std_max_degree << "\t"
+             << avg_construction_time << " // " << std_construction_time << "\t"
+             << avg_shortest_path_calculation_time << " // " << std_shortest_path_calculation_time << "\t"
+             << avg_total_time << " // " << std_total_time << "\n";
+        file.close();
+        std::cout << "Results written to " << filepath << std::endl;
+    } else {
+        std::cerr << "Error: Could not open file " << filepath << std::endl;
+    }
+}
+
+int main() {
+    // std::string filepath;
+    // int N, m, n_simulations;
+    // double p, friendship_probability;
+    
+    // std::cout << "Enter output filepath: ";
+    // std::cin >> filepath;
+    
+    // std::cout << "Enter number of nodes (N): ";
+    // std::cin >> N;
+    
+    // std::cout << "Enter step length probability (p): ";
+    // std::cin >> p;
+    
+    // std::cout << "Enter number of marked nodes (m): ";
+    // std::cin >> m;
+    
+    // std::cout << "Enter friendship probability: ";
+    // std::cin >> friendship_probability;
+    
+    // std::cout << "Enter number of simulations: ";
+    // std::cin >> n_simulations;
+
+    for (int m = 2; m <= 10; m=m+4){
+        for (double fp = 0.1; fp <= 0.9; fp=fp+0.2){
+            for (double p = 0.1; p <= 1.0; p=p+0.1){
+                create_point_sequential("results.txt", 100000, p, m, fp, 10);
             }
         }
     }
     
-    file.close();
-    std::cout << "Network written to file: " << filename << std::endl;
-}
-
-int main() {
-    int n;
-    std::cin >> n;
+    // create_point_sequential(filepath, N, p, m, friendship_probability, n_simulations);
     
-    auto start_time = std::chrono::high_resolution_clock::now();
-    
-    auto graph = generate_network(n, 2, 1.0, 0.5);
-    
-    auto end_time = std::chrono::high_resolution_clock::now();
-    auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end_time - start_time);
-    std::cout << "Network generation time: " << duration.count() << " milliseconds" << std::endl;
-    
-    writeNetworkToFile(graph, "network.txt");
- 
-    auto fastGraph = convertToFastGraph(graph);
-
-    start_time = std::chrono::high_resolution_clock::now();
-    auto power_law_result = calculatePowerLaw(fastGraph);
-    double power_law_coef = std::get<0>(power_law_result);
-    double pearson_r = std::get<1>(power_law_result);
-    int max_degree = std::get<2>(power_law_result);
-    end_time = std::chrono::high_resolution_clock::now();
-    auto power_law_duration = std::chrono::duration_cast<std::chrono::milliseconds>(end_time - start_time);
-    
-    start_time = std::chrono::high_resolution_clock::now();
-    double avg_path_length = calculateShortestPathLength(fastGraph);
-    end_time = std::chrono::high_resolution_clock::now();
-    auto avg_path_length_duration = std::chrono::duration_cast<std::chrono::milliseconds>(end_time - start_time);
-
-    start_time = std::chrono::high_resolution_clock::now();
-    double clustering_coefficient = calculateClusteringCoefficient(fastGraph);
-    end_time = std::chrono::high_resolution_clock::now();
-    auto clustering_coefficient_duration = std::chrono::duration_cast<std::chrono::milliseconds>(end_time - start_time);
-    
-    std::cout << "Average shortest path length: " << avg_path_length << std::endl;
-    std::cout << "Clustering coefficient: " << clustering_coefficient << std::endl;
-    std::cout << "Power law coefficient (gamma): " << power_law_coef << std::endl;
-    std::cout << "Pearson's R for power law fit: " << pearson_r << std::endl;
-    std::cout << "Maximum degree in network: " << max_degree << std::endl;
-    std::cout << "Clustering coefficient calculation time: " << clustering_coefficient_duration.count() << " milliseconds" << std::endl;
-    std::cout << "Average path length calculation time: " << avg_path_length_duration.count() << " milliseconds" << std::endl;
-    std::cout << "Power law calculation time: " << power_law_duration.count() << " milliseconds" << std::endl;
+    return 0;
 }

@@ -2,3 +2,4 @@
 .vscode/settings.json
 network_metrics
 main
+*.txt

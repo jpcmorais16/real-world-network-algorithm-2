@@ -9,6 +9,7 @@
 #include <fstream>
 #include <cmath>
 #include <tuple>
+#include <chrono>
 
 #include "networkMetrics.h"
 
@@ -119,6 +120,8 @@ double calculateShortestPathLength(const vector<vector<int>>& fastGraph) {
     const size_t maxThreads = std::thread::hardware_concurrency();
     const size_t numThreads = std::min(maxThreads ? maxThreads : 2, n);
     
+    std::cout << "Using " << numThreads << " threads for path length calculation" << std::endl;
+    
     std::vector<double> threadResults(numThreads, 0.0);
     std::vector<std::thread> threads;
     
@@ -187,4 +190,34 @@ double calculateShortestPathLength(const vector<vector<int>>& fastGraph) {
     totalSum = std::accumulate(threadResults.begin(), threadResults.end(), 0.0);
     
     return totalSum / n;
+}
+
+NetworkMetrics calculateAllMetrics(std::vector<std::unordered_set<int>>& graph) {
+    NetworkMetrics metrics;
+    
+    auto fastGraph = convertToFastGraph(graph);
+    
+    auto start_time = std::chrono::high_resolution_clock::now();
+    auto power_law_result = calculatePowerLaw(fastGraph);
+    metrics.powerLawCoefficient = std::get<0>(power_law_result);
+    metrics.pearsonR = std::get<1>(power_law_result);
+    metrics.maxDegree = std::get<2>(power_law_result);
+    auto end_time = std::chrono::high_resolution_clock::now();
+    metrics.powerLawDuration = std::chrono::duration_cast<std::chrono::milliseconds>(end_time - start_time);
+    
+    const size_t maxThreads = std::thread::hardware_concurrency();
+    const size_t n = fastGraph.size();
+    metrics.numThreads = std::min(maxThreads ? maxThreads : 2, n);
+    
+    start_time = std::chrono::high_resolution_clock::now();
+    metrics.avgPathLength = calculateShortestPathLength(fastGraph);
+    end_time = std::chrono::high_resolution_clock::now();
+    metrics.avgPathLengthDuration = std::chrono::duration_cast<std::chrono::milliseconds>(end_time - start_time);
+    
+    start_time = std::chrono::high_resolution_clock::now();
+    metrics.clusteringCoefficient = calculateClusteringCoefficient(fastGraph);
+    end_time = std::chrono::high_resolution_clock::now();
+    metrics.clusteringCoefficientDuration = std::chrono::duration_cast<std::chrono::milliseconds>(end_time - start_time);
+    
+    return metrics;
 }
