@@ -287,6 +287,103 @@ void create_point_sequential(const std::string& filepath, int N, double p, int m
     }
 }
 
+struct PathComparisonResult {
+    int N;
+    double p;
+    int m;
+    double friendship_probability;
+    double exactAveragePathLength;
+    double approximateAveragePathLength;
+    double error;
+    size_t numEdges;
+};
+
+void create_comparison_sequential(const std::string& filepath, int N, double p, int m, double friendship_probability, int n_simulations) {
+    std::cout << "Running " << n_simulations << " sequential simulations...\n";
+    
+    std::vector<PathComparisonResult> results;
+    results.reserve(n_simulations);
+    
+    for (int i = 0; i < n_simulations; ++i) {
+        std::cout << "Simulation " << (i + 1) << "/" << n_simulations << std::endl;
+        
+        // Create network
+        auto network = generate_network(N, m, p, friendship_probability);
+        
+        // Convert to fast graph format
+        auto fastGraph = convertToFastGraph(network);
+        
+        // Calculate both exact and approximate average path lengths
+        auto pathLengths = compareApproximateAndExactAveragePathLength(fastGraph);
+        double exactLength = pathLengths.first;
+        double approximateLength = pathLengths.second;
+        
+        // Get number of edges
+        size_t totalDegree = 0;
+        for (const auto& neighbors : fastGraph) {
+            totalDegree += neighbors.size();
+        }
+        size_t numEdges = totalDegree / 2;
+        
+        // Create result
+        PathComparisonResult result;
+        result.N = N;
+        result.p = p;
+        result.m = m;
+        result.friendship_probability = friendship_probability;
+        result.exactAveragePathLength = exactLength;
+        result.approximateAveragePathLength = approximateLength;
+        result.error = std::abs(exactLength - approximateLength) / exactLength; // Relative error
+        result.numEdges = numEdges;
+        
+        results.push_back(result);
+    }
+    
+    // Calculate statistics
+    double avgExactLength = 0.0;
+    double avgApproximateLength = 0.0;
+    double avgError = 0.0;
+    double maxError = 0.0;
+    double minError = std::numeric_limits<double>::max();
+    size_t avgNumEdges = 0;
+    
+    for (const auto& result : results) {
+        avgExactLength += result.exactAveragePathLength;
+        avgApproximateLength += result.approximateAveragePathLength;
+        avgError += result.error;
+        maxError = std::max(maxError, result.error);
+        minError = std::min(minError, result.error);
+        avgNumEdges += result.numEdges;
+    }
+    
+    avgExactLength /= n_simulations;
+    avgApproximateLength /= n_simulations;
+    avgError /= n_simulations;
+    avgNumEdges /= n_simulations;
+    
+    // Print results
+    std::cout << "\nResults for N=" << N << ", p=" << p << ", m=" << m 
+              << ", friendship_probability=" << friendship_probability << ":\n";
+    std::cout << "Average Number of Edges: " << avgNumEdges << "\n";
+    std::cout << "Average Exact Path Length: " << avgExactLength << "\n";
+    std::cout << "Average Approximate Path Length: " << avgApproximateLength << "\n";
+    std::cout << "Average Relative Error: " << (avgError * 100) << "%\n";
+    std::cout << "Min Relative Error: " << (minError * 100) << "%\n";
+    std::cout << "Max Relative Error: " << (maxError * 100) << "%\n\n";
+    
+    // Save results to file
+    std::ofstream file(filepath, std::ios::app);
+    if (file.is_open()) {
+        file << std::fixed << std::setprecision(8);
+        file << N << ", " << p << ", " << m << ", " << friendship_probability << "\t\t\t"
+             << avgExactLength << ", " << avgApproximateLength << "\t\t\t"
+             << avgError << ", " << minError << ", " << maxError << ", " << avgNumEdges << "\n\n";
+        file.close();
+    } else {
+        std::cerr << "Error opening file: " << filepath << std::endl;
+    }
+}
+
 int main() {
     // std::string filepath;
     // int N, m, n_simulations;
@@ -310,14 +407,43 @@ int main() {
     // std::cout << "Enter number of simulations: ";
     // std::cin >> n_simulations;
 
-    for (int m = 2; m <= 10; m=m+4){
-        for (double fp = 0.1; fp <= 0.9; fp=fp+0.2){
-            for (double p = 0.1; p <= 1.0; p=p+0.1){
-                create_point_sequential("results.txt", 100000, p, m, fp, 10);
-            }
-        }
-    }
+    // for (int N = 1000; N <= 100000; N=N+10000){
+    //     for (int m = 2; m <= 10; m=m+8){
+    //         for (double fp = 0.1; fp <= 0.9; fp=fp+0.8){
+    //             create_comparison_sequential("approximation_results.txt", N, 0.5, m, fp, 5);
+    //         }
+    //     }
+    // }   
     
+    //create_comparison_sequential("approximation_results.txt", 200000, 0.5, 10, 0.9, 1);
+
+    // for (int m = 2; m <= 10; m=m+1){
+    //     for (double fp = 0.1; fp <= 0.9; fp=fp+0.1){
+    //         for (double p = 0.1; p <= 1.0; p=p+0.9){
+    //             create_comparison_sequential("edges_vs_error.txt", 10000, p, m, fp, 5);
+    //         }
+    //     }
+    // }
+
+
+    // for (double fp = 0.25; fp <= 0.75; fp=fp+0.25){
+    //     for (int m = 2; m <= 10; m=m+1){
+    //         create_comparison_sequential("edges_vs_error_feriado.txt", 50000, 0.5, m, fp, 5);
+    //     }
+    // }
+
+    for(int i = 0; i < 2; i++){
+        create_comparison_sequential("200000.txt", 200000, 0.5, 10, 0.9, 1);
+    }
+
+    // create_comparison_sequential("approximation_results.txt", 61000, 0.5, 10, 0.9, 5);
+    // create_comparison_sequential("approximation_results.txt", 71000, 0.5, 2, 0.1, 5);
+    
+    // for (int N = 81000; N <= 101000; N=N+10000){
+    //     create_comparison_sequential("approximation_results.txt", N, 0.5, 2, 0.1, 5);
+    //     create_comparison_sequential("approximation_results.txt", N, 0.5, 10, 0.9, 5);
+    // }
+
     // create_point_sequential(filepath, N, p, m, friendship_probability, n_simulations);
     
     return 0;

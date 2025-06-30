@@ -11,6 +11,7 @@ struct NetworkMetrics {
     double powerLawCoefficient;
     double pearsonR;
     int maxDegree;
+    size_t numEdges;
     std::chrono::milliseconds powerLawDuration;
     std::chrono::milliseconds avgPathLengthDuration;
     std::chrono::milliseconds clusteringCoefficientDuration;
@@ -25,4 +26,6 @@ double calculateShortestPathLength(const std::vector<std::vector<int>>& fastGrap
 
 
 NetworkMetrics calculateAllMetrics(std::vector<std::unordered_set<int>>& graph);
+
+std::pair<double, double> compareApproximateAndExactAveragePathLength(const std::vector<std::vector<int>>& fastGraph);
 
